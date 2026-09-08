@@ -78,12 +78,24 @@ exactly as two independent hospital systems would.
        +----- integration.IntegrationLog ----+
               (full audit trail, PostgreSQL)
 
-Docker Compose stack:
-  [ db ]  PostgreSQL 16  (volume: pgdata)
-  [ web ] Django + gunicorn + dashboard  (port 8000)
+Docker Compose stack (3 containers):
+  [ frontend ] Angular 22 + nginx — dashboard on port 80,
+               proxies /api to the Django backend (no CORS)
+  [ web ]      Django + gunicorn — REST API on port 8000
+  [ db ]       PostgreSQL 16 (volume: pgdata)
 </pre>
 
+<div class="info"><b>Workspace layout:</b> the Angular frontend is a separate
+project at the <b>workspace root</b> (<code>frontend/</code>, outside the
+backend folder). The backend folder (<code>backend/healthMS</code>) contains
+the Django project; <code>docker-compose.yml</code> builds the frontend image
+from <code>../../frontend</code>.</div>
+
 <h2>3. Requirements to Run</h2>
+<div class="info" style="margin-bottom:10px"><b>New:</b> the dashboard is now a proper <b>Angular 22</b>
+application in <code>frontend/</code> at the workspace root (outside the backend), served by nginx
+in Docker with the API proxied — pages: Login, Dashboard (auto-demo), Patients, Lab Requests,
+LIS Orders (result entry), Catalog, and Transaction Log.</div>
 <table>
   <tr><th>Requirement</th><th>Check</th><th>Notes</th></tr>
   <tr><td>Docker + Docker Compose</td><td><code>docker compose version</code></td><td>The only hard requirement — everything else runs in containers.</td></tr>
@@ -101,7 +113,7 @@ dashboard URLs accordingly.</div>
 <div class="pagebreak"></div>
 <h2>4. Running the Project (Docker — Recommended)</h2>
 <pre>
-# 1. From the project root (the folder containing docker-compose.yml):
+# 1. From the backend project root (backend/healthMS — the folder with docker-compose.yml):
 <b>docker compose up --build</b>
 
 #    The web container automatically:
@@ -130,10 +142,11 @@ docker compose exec web python manage.py createsuperuser         # extra admin u
 
 <h2>5. Running the Demonstration</h2>
 
-<h3><span class="stepnum">A</span>Browser dashboard (recommended for presentations)</h3>
+<h3><span class="stepnum">A</span>Angular dashboard (recommended for presentations)</h3>
 <ol>
-  <li>Open <b>http://localhost:8000/</b></li>
-  <li>Click <b>▶ Run Full Demo (auto)</b> — it walks through all 8 steps with a small pause between each, while the three tables below update live.</li>
+  <li>Open <b>http://localhost/</b> (the Angular dashboard served by nginx)</li>
+  <li>Log in — the HMS side pre-fills <code>hms_demo</code>; also log in to the Lab side (<code>lab_admin</code>) to process orders. Both chips in the navbar turn green.</li>
+  <li>On the <b>Dashboard</b>, click <b>▶ Run Full Demo (auto)</b> — it walks through all 8 steps with a small pause between each, while the tables update live.</li>
   <li>What you will see, in order:
     <ul>
       <li><b>Validation errors</b> — missing fields and unknown patient → HTTP 400</li>
@@ -164,7 +177,7 @@ docker compose exec -e BASE_URL=http://web:8000 web python simulate_integration.
 <h2>6. API Reference</h2>
 <table>
   <tr><th>Method</th><th>Endpoint</th><th>Auth</th><th>Purpose</th></tr>
-  <tr><td>GET</td><td><code>/</code></td><td>—</td><td>Dashboard frontend (demo UI)</td></tr>
+  <tr><td>GET</td><td><code>/</code></td><td>—</td><td><b>Angular dashboard</b> (nginx, port 80)</td></tr>
   <tr><td>POST</td><td><code>/api/auth/token/</code></td><td>—</td><td>Obtain JWT (<code>username</code>, <code>password</code>) → <code>access</code>, <code>refresh</code></td></tr>
   <tr><td>POST</td><td><code>/api/auth/token/refresh/</code></td><td>refresh token</td><td>Refresh JWT</td></tr>
   <tr><td>GET / POST</td><td><code>/api/hms/patients/</code></td><td>JWT</td><td>List / create patients (HMS)</td></tr>
@@ -231,19 +244,29 @@ and transaction logging.</div>
 
 <h2>10. Project Structure</h2>
 <pre>
-├── docker-compose.yml         # db + web services
-├── Dockerfile / entrypoint.sh # app image, auto-migrate + seed
-├── requirements.txt           # Django, DRF, SimpleJWT, psycopg2, gunicorn, whitenoise
-├── .env / .env.example        # all configuration (DB, LIS URL, service credentials)
-├── manage.py
-├── healthMS/                  # project settings & root URL config
-├── hms/                       # HOSPITAL system: Patient, LabRequest, submission & result views
-│   └── management/commands/seed_demo_data.py
-├── lis/                       # LAB system: catalog, order ingest (idempotent), process, results
-├── integration/               # LISClient (JWT, retries), IntegrationLog, log API, tests
-├── templates/dashboard.html   # the web dashboard
-├── simulate_integration.py    # CLI end-to-end demo
-└── docs/project_guide.html    # this guide (source of the PDF)
+workspace/
+├── frontend/                      # ANGULAR 22 dashboard (separate project, outside backend)
+│   ├── Dockerfile / nginx.conf    # multi-stage build; nginx serves + proxies /api → web:8000
+│   ├── proxy.conf.json            # dev-mode proxy for `npm start`
+│   └── src/app/
+│       ├── pages/                 # login, dashboard, patients, lab-requests,
+│       │                          # orders, catalog, logs
+│       ├── services/              # AuthService (dual JWT sessions), ApiService
+│       ├── interceptors/          # JWT attach + auto-refresh on 401
+│       ├── guards/                # route guards (authGuard, sideGuard)
+│       └── models.ts              # shared API types
+└── backend/
+    ├── healthMS/                  # THIS Django project (HMS + LIS + integration)
+    │   ├── docker-compose.yml     # db + web + frontend services
+    │   ├── Dockerfile / entrypoint.sh
+    │   ├── healthMS/              # settings & root URLs
+    │   ├── hms/                   # HOSPITAL system: Patient, LabRequest
+    │   ├── lis/                   # LAB system: catalog, orders (idempotent), results
+    │   ├── integration/           # LISClient (JWT, retries), IntegrationLog, tests
+    │   ├── templates/dashboard.html  # legacy single-file dashboard (still served on :8000)
+    │   ├── simulate_integration.py   # CLI end-to-end demo
+    │   └── docs/                  # project guide (HTML + PDF)
+    └── laboratoryIS/              # second backend workspace (same integration, LIS side)
 </pre>
 
 <div class="center" style="margin-top:26px">
