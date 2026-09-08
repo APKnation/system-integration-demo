@@ -1,0 +1,90 @@
+<div class="page-title">
+  <h1>Lab Requests</h1>
+  <span class="sub">HMS-side submissions to the LIS — with validation and idempotency</span>
+</div>
+
+<div class="grid" style="grid-template-columns: 340px 1fr; align-items:start">
+  <div class="panel">
+    <div class="head"><h2>New lab request</h2></div>
+    <div class="body">
+      <label>Patient number</label>
+      <input [(ngModel)]="model.patient_number" placeholder="HMS-0001" />
+
+      <label>Test code</label>
+      <select [(ngModel)]="model.test_code">
+        <option value="CBC">CBC — Complete Blood Count</option>
+        <option value="LFT">LFT — Liver Function Test</option>
+        <option value="RFT">RFT — Renal Function Test</option>
+        <option value="BS">BS — Blood Sugar (Fasting)</option>
+        <option value="LIP">LIP — Lipid Profile</option>
+        <option value="URM">URM — Urinalysis (Microscopy)</option>
+        <option value="XYZ-999">XYZ-999 — (invalid, for demo)</option>
+      </select>
+
+      <label>request_id (optional — for idempotent retries)</label>
+      <input [(ngModel)]="model.request_id" placeholder="leave blank to auto-generate" class="mono" />
+
+      <button class="btn-primary btn-block" style="margin-top:14px" [disabled]="busy() || !model.patient_number" (click)="submit()">
+        {{ busy() ? 'Submitting…' : '📨 Submit to LIS' }}
+      </button>
+
+      @if (message(); as m) {
+        <div class="alert {{ m.type }}">{{ m.text }}</div>
+      }
+
+      <p class="k" style="margin-top:12px">
+        Validation: unknown patient → 400 · unknown test code → 422 ·
+        the LIS order number is stored back on the request.
+      </p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="head">
+      <h2>All lab requests</h2>
+      <div class="right"><button class="btn-ghost" (click)="load()">↻ Refresh</button></div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>request_id</th><th>Patient</th><th>Test</th><th>Status</th><th>LIS Order #</th><th>Rejection / Note</th><th>Requested</th><th></th></tr></thead>
+        <tbody>
+          @for (r of requests(); track r.request_id) {
+            <tr>
+              <td class="mono" [title]="r.request_id">{{ r.request_id.slice(0, 8) }}…</td>
+              <td>{{ r.patient_number }}<div class="k">{{ r.patient_name }}</div></td>
+              <td>{{ r.test_code }}<div class="k">{{ r.test_name }}</div></td>
+              <td><span class="badge b-{{ r.status }}">{{ r.status }}</span></td>
+              <td class="mono">{{ r.lis_order_number || '—' }}</td>
+              <td class="k">{{ r.rejection_reason || '—' }}</td>
+              <td class="k">{{ r.requested_at.slice(0, 16).replace('T', ' ') }}</td>
+              <td><button class="btn-ghost btn-sm" (click)="viewResult(r.request_id)">result</button></td>
+            </tr>
+          } @empty {
+            <tr><td colspan="8" class="empty">No requests yet</td></tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+@if (resultModal(); as res) {
+  <div class="modal-bg" (click)="closeModal()">
+    <div class="modal panel" (click)="$event.stopPropagation()">
+      <div class="head"><h2>🧾 Lab Result — {{ res.order_number }}</h2></div>
+      <div class="body">
+        <div class="grid cols-2">
+          <div><span class="k">Patient</span><div><b>{{ res.patient_number }}</b></div></div>
+          <div><span class="k">Test</span><div><b>{{ res.test_code }}</b></div></div>
+          <div><span class="k">Value</span><div><b>{{ res.result.result_value }} {{ res.result.unit }}</b>
+            @if (res.result.is_abnormal) {<span class="badge b-REJECTED">ABNORMAL</span>}</div></div>
+          <div><span class="k">Reference</span><div>{{ res.result.reference_range || '—' }}</div></div>
+          <div><span class="k">Performed by</span><div>{{ res.result.performed_by }}</div></div>
+          <div><span class="k">Verified by</span><div>{{ res.result.verified_by || '—' }}</div></div>
+        </div>
+        @if (res.result.notes) { <p class="k" style="margin-top:10px">{{ res.result.notes }}</p> }
+        <button class="btn-primary" style="margin-top:12px" (click)="closeModal()">Close</button>
+      </div>
+    </div>
+  </div>
+}
