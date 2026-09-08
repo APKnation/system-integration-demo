@@ -24,7 +24,7 @@ services:
     environment:
       DEBUG: "false"
       SECRET_KEY: ${SECRET_KEY:-django-insecure-change-me-in-production}
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,web,0.0.0.0}
       POSTGRES_DB: ${POSTGRES_DB:-healthms}
       POSTGRES_USER: ${POSTGRES_USER:-healthms}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-healthms}

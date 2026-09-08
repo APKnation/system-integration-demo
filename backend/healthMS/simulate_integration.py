@@ -7,13 +7,14 @@ Run with the Django dev server running in another terminal:
 Uses only the public HTTP API (JWT auth, request validation, error handling).
 """
 
+import os
 import sys
 import time
 import uuid
 
 import requests
 
-BASE_URL = "http://127.0.0.1:8000"
+BASE_URL = os.environ.get("BASE_URL", "http://127.0.0.1:8000")
 LAB_ADMIN = ("lab_admin", "LabAdmin#2024")
 HMS_SERVICE = ("hms_demo", "HmsDemo#2024")
 
