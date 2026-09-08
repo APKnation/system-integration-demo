@@ -1,4 +1,4 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, map, throwError } from 'rxjs';
 
@@ -90,7 +90,7 @@ export class AuthService {
         refresh: session.refresh,
       })
       .pipe(
-        map((res) => {
+        map((res: { access: string }) => {
           this.set({ ...session, access: res.access });
           return res.access;
         })

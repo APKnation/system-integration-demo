@@ -41,5 +41,13 @@ services:
       db:
         condition: service_healthy
 
+  frontend:
+    build: ./frontend
+    container_name: healthms-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - web
+
 volumes:
   pgdata:

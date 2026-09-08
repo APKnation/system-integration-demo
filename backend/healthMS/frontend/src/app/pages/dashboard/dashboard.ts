@@ -1,4 +1,6 @@
+import { JsonPipe } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Router } from '@angular/router';
 import { ApiService, ApiError } from '../../services/api.service';
@@ -41,7 +43,7 @@ interface DemoStep {
 
 @Component({
   selector: 'app-dashboard',
-  imports: [FormsModule],
+  imports: [FormsModule, JsonPipe],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.css',
 })
