@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HMS ↔ LIS Integration Dashboard</title>
+<style>
+  :root {
+    --bg: #0f172a; --panel: #1e293b; --panel2: #273449; --border: #334155;
+    --text: #e2e8f0; --muted: #94a3b8;
+    --blue: #3b82f6; --green: #22c55e; --red: #ef4444; --amber: #f59e0b; --purple: #a78bfa;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  header { background: var(--panel); border-bottom: 1px solid var(--border); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+  header h1 { font-size: 1.15rem; } header h1 span { color: var(--blue); }
+  .legend { display: flex; gap: 14px; font-size: .78rem; color: var(--muted); flex-wrap: wrap; }
+  .legend b { font-weight: 600; }
+  .lg-hms { color: var(--blue); } .lg-lis { color: var(--green); } .lg-int { color: var(--purple); }
+  main { padding: 20px 24px; display: grid; grid-template-columns: 340px 1fr; gap: 18px; max-width: 1400px; margin: 0 auto; }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
+  .panel > h2 { font-size: .82rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+  .panel .body { padding: 16px; }
+  .left { display: flex; flex-direction: column; gap: 18px; }
+  label { display: block; font-size: .78rem; color: var(--muted); margin: 10px 0 4px; }
+  input, select { width: 100%; padding: 9px 11px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: .9rem; }
+  input:focus, select:focus { outline: none; border-color: var(--blue); }
+  button { cursor: pointer; border: none; border-radius: 8px; padding: 10px 14px; font-size: .88rem; font-weight: 600; color: #fff; transition: filter .15s; }
+  button:hover { filter: brightness(1.15); } button:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-hms { background: var(--blue); width: 100%; margin-top: 14px; }
+  .btn-lab { background: var(--green); width: 100%; margin-top: 6px; }
+  .btn-demo { background: var(--purple); width: 100%; margin-top: 6px; padding: 12px; }
+  .btn-refresh { background: var(--panel2); color: var(--muted); font-size: .75rem; padding: 6px 10px; margin-left: auto; }
+  .hint { font-size: .72rem; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+  th { text-align: left; color: var(--muted); font-weight: 600; padding: 10px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 9px 12px; border-bottom: 1px solid rgba(51,65,85,.5); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: .7rem; font-weight: 700; white-space: nowrap; }
+  .b-SENT, .b-ACCEPTED, .b-ORDER_SUBMITTED, .b-ORDER_ACCEPTED, .b-RESULT_RETRIEVED, .b-RESULT_RECORDED, .b-ORDER_STATUS_QUERIED, .b-CATALOG_QUERIED { background: rgba(59,130,246,.15); color: #7ab8ff; }
+  .b-COMPLETED { background: rgba(34,197,94,.15); color: #6ee7a0; }
+  .b-PENDING { background: rgba(245,158,11,.15); color: #fbc65f; }
+  .b-REJECTED, .b-ERROR, .b-REJECTED_BY_LIS, .b-UNKNOWN_TEST_CODE, .b-CONNECTION_ERROR, .b-AUTH_ERROR, .b-SERVER_ERROR, .b-DB_ERROR { background: rgba(239,68,68,.15); color: #f58c8c; }
+  .b-RESULT_NOT_READY, .b-DUPLICATE_IGNORED, .b-VALIDATION_ERROR, .b-ORDER_NOT_FOUND { background: rgba(148,163,184,.15); color: #b0bdd0; }
+  .mono { font-family: ui-monospace, 'Cascadia Code', Consolas, monospace; font-size: .74rem; }
+  .muted { color: var(--muted); }
+  .err { color: #f58c8c; font-size: .74rem; margin-top: 6px; white-space: pre-wrap; }
+  .ok { color: #6ee7a0; font-size: .74rem; margin-top: 6px; }
+  .empty { color: var(--muted); text-align: center; padding: 26px 12px; font-size: .85rem; }
+  .k { color: var(--muted); font-size: .72rem; }
+  #toast { position: fixed; bottom: 18px; right: 18px; background: var(--panel2); border: 1px solid var(--border); color: var(--text); padding: 10px 16px; border-radius: 10px; font-size: .82rem; display: none; max-width: 380px; }
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; z-index: 50; }
+  .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 22px; width: min(560px, 92vw); max-height: 80vh; overflow-y: auto; }
+  .modal h3 { font-size: .95rem; margin-bottom: 12px; }
+  .modal pre { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-size: .74rem; overflow-x: auto; line-height: 1.55; }
+  .modal .close { background: var(--panel2); margin-top: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🏥 HMS <span>↔</span> LIS Integration Dashboard</h1>
+  <div class="legend">
+    <span class="lg-hms">■ HMS side</span>
+    <span class="lg-lis">■ LIS side</span>
+    <span class="lg-int">■ Integration client</span>
+  </div>
+</header>
+
+<main>
+  <div class="left">
+    <!-- CONTROLS -->
+    <section class="panel">
+      <h2>🎛 Controls</h2>
+      <div class="body">
+        <button class="btn-demo" id="btnAuto">▶ Run Full Demo (auto)</button>
+
+        <label>Patient</label>
+        <select id="patient">
+          <option value="HMS-0001">HMS-0001 — Amina Juma (F, 1990)</option>
+          <option value="HMS-0002">HMS-0002 — Baraka Mushi (M, 1985)</option>
+          <option value="HMS-0003">HMS-0003 — Neema Kileo (F, 2001)</option>
+        </select>
+
+        <label>Test</label>
+        <select id="test">
+          <option value="CBC">CBC — Complete Blood Count</option>
+          <option value="LFT">LFT — Liver Function Test</option>
+          <option value="RFT">RFT — Renal Function Test</option>
+          <option value="BS">BS — Blood Sugar (Fasting)</option>
+          <option value="LIP">LIP — Lipid Profile</option>
+          <option value="URM">URM — Urinalysis (Microscopy)</option>
+        </select>
+
+        <button class="btn-hms" id="btnSubmit">📨 Submit Lab Request (HMS → LIS)</button>
+
+        <label>Order (request_id)</label>
+        <select id="orderSel"><option value="">— select a submitted request —</option></select>
+
+        <button class="btn-lab" id="btnProcess">🧪 Record Result &amp; Complete (Lab staff)</button>
+        <div class="hint">
+          <b>Full demo</b> runs: validation errors → auth check → valid submission → 409
+          (result not ready) → lab processing → result retrieval → 422 unknown test →
+          idempotent re-submission.<br><br>
+          <b>Manual flow</b>: submit a request, then select it and record a result, or
+          retrieve results for any request.
+        </div>
+        <div id="ctlMsg"></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="right">
+    <!-- REQUESTS -->
+    <section class="panel" style="margin-bottom:18px">
+      <h2>📋 HMS Lab Requests <button class="btn-refresh" id="btnReqs">↻ Refresh</button></h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>request_id</th><th>Patient</th><th>Test</th><th>Status</th><th>LIS Order #</th><th>Rejection / Note</th><th>Requested</th></tr></thead>
+        <tbody id="reqBody"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+      </table></div>
+    </section>
+
+    <!-- ORDERS -->
+    <section class="panel" style="margin-bottom:18px">
+      <h2>🧪 LIS Lab Orders &amp; Results <button class="btn-refresh" id="btnOrders">↻ Refresh</button></h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Order #</th><th>Patient</th><th>Test</th><th>Status</th><th>Result</th><th>Verified by</th><th></th></tr></thead>
+        <tbody id="ordBody"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+      </table></div>
+    </section>
+
+    <!-- LOGS -->
+    <section class="panel">
+      <h2>🧾 Integration Transaction Log <button class="btn-refresh" id="btnLogs">↻ Refresh</button></h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Time</th><th>Side</th><th>Method</th><th>HTTP</th><th>Status</th><th>Endpoint</th><th>request_id</th><th>Error</th></tr></thead>
+        <tbody id="logBody"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
+      </table></div>
+    </section>
+  </div>
+</main>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <h3 id="mTitle"></h3>
+    <pre id="mBody"></pre>
+    <button class="close" onclick="document.getElementById('modalBg').style.display='none'">Close</button>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const sid = () => Math.random().toString(36).slice(2, 8);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+let TOKENS = { lab: null, hms: null };
+const TOKEN_URL = '/api/auth/token/';
+
+async function api(side, method, path, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (TOKENS[side]) headers['Authorization'] = 'Bearer ' + TOKENS[side];
+  const resp = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  if (resp.status === 401) {
+    const creds = side === 'lab'
+      ? { username: 'lab_admin', password: 'LabAdmin#2024' }
+      : { username: 'hms_demo', password: 'HmsDemo#2024' };
+    const tr = await fetch(TOKEN_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(creds) });
+    if (!tr.ok) throw new Error('Authentication failed');
+    TOKENS[side] = (await tr.json()).access;
+    headers['Authorization'] = 'Bearer ' + TOKENS[side];
+    return fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  }
+  return resp;
+}
+const apiJson = async (...a) => { const r = await api(...a); const t = await r.text(); try { return { status: r.status, data: JSON.parse(t) }; } catch { return { status: r.status, data: t.slice(0, 400) }; } };
+
+function toast(msg, ms = 3500) { const t = $('#toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', ms); }
+function ctl(msg, cls) { $('#ctlMsg').innerHTML = `<div class="${cls}">${esc(msg)}</div>`; }
+function showModal(title, obj) { $('#mTitle').textContent = title; $('#mBody').textContent = JSON.stringify(obj, null, 2); $('#modalBg').style.display = 'flex'; }
+const fmtTime = (s) => (s ? s.replace('T', ' ').slice(5, 19) : '');
+const short = (u) => String(u ?? '').slice(0, 8);
+
+// ---------------- data loads ----------------
+async function loadRequests() {
+  const { status, data } = await apiJson('hms', 'GET', '/api/hms/lab-requests/');
+  const tb = $('#reqBody');
+  if (status !== 200 || !Array.isArray(data)) { tb.innerHTML = `<tr><td colspan="7" class="empty">Failed to load (${esc(status)})</td></tr>`; return; }
+  if (!data.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">No lab requests yet — submit one!</td></tr>'; return; }
+  tb.innerHTML = data.map(r => `<tr>
+    <td class="mono" title="${esc(r.request_id)}">${esc(short(r.request_id))}…</td>
+    <td>${esc(r.patient_number)}<div class="k">${esc((r.patient_name || '').replace(/^HMS-\d+ - /, ''))}</div></td>
+    <td>${esc(r.test_code)}<div class="k">${esc(r.test_name)}</div></td>
+    <td><span class="badge b-${esc(r.status)}">${esc(r.status)}</span></td>
+    <td class="mono">${esc(r.lis_order_number || '—')}</td>
+    <td class="k">${esc(r.rejection_reason || '—')}</td>
+    <td class="k">${esc(fmtTime(r.requested_at))}</td>
+  </tr>`).join('');
+}
+
+async function loadOrders() {
+  const { status, data } = await apiJson('lab', 'GET', '/api/lis/orders/');
+  const tb = $('#ordBody');
+  if (status !== 200 || !Array.isArray(data)) { tb.innerHTML = `<tr><td colspan="7" class="empty">Failed to load (${esc(status)})</td></tr>`; return; }
+  if (!data.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">No orders yet</td></tr>'; return; }
+  tb.innerHTML = data.map(o => {
+    const r = o.result;
+    return `<tr>
+      <td class="mono">${esc(o.order_number)}</td>
+      <td>${esc(o.patient_number)}<div class="k">${esc(o.patient_name)}</div></td>
+      <td>${esc(o.test_code)}</td>
+      <td><span class="badge b-${esc(o.status)}">${esc(o.status)}</span></td>
+      <td>${r ? `<b>${esc(r.result_value)} ${esc(r.unit)}</b><div class="k">ref ${esc(r.reference_range || '—')}${r.is_abnormal ? ' ⚠ ABNORMAL' : ''}</div>` : '<span class="muted">pending</span>'}</td>
+      <td class="k">${esc(r?.verified_by || '—')}</td>
+      <td>${o.hms_request_id ? `<button class="btn-refresh" data-res="${esc(o.hms_request_id)}">result</button>` : ''}</td>
+    </tr>`;
+  }).join('');
+  tb.querySelectorAll('[data-res]').forEach(b => b.onclick = () => retrieveResult(b.dataset.res, false));
+}
+
+async function loadLogs() {
+  const { status, data } = await apiJson('lab', 'GET', '/api/logs/?limit=60');
+  const tb = $('#logBody');
+  if (status !== 200 || !Array.isArray(data)) { tb.innerHTML = `<tr><td colspan="8" class="empty">Failed to load (${esc(status)})</td></tr>`; return; }
+  if (!data.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">No transactions logged yet</td></tr>'; return; }
+  const SIDE_INT = new Set(['ORDER_SUBMITTED', 'RESULT_RETRIEVED', 'CONNECTION_ERROR', 'AUTH_ERROR', 'SERVER_ERROR', 'REJECTED_BY_LIS']);
+  tb.innerHTML = data.map(l => `<tr>
+    <td class="k">${esc(fmtTime(l.created_at))}</td>
+    <td>${SIDE_INT.has(l.status) ? '<span class="lg-int">■ int</span>' : (l.endpoint.startsWith('/api/lis') ? '<span class="lg-lis">■ LIS</span>' : '<span class="lg-hms">■ HMS</span>')}</td>
+    <td class="mono">${esc(l.method)}</td>
+    <td><span class="badge b-${l.status_code < 400 ? 'SENT' : 'REJECTED'}">${esc(l.status_code)}</span>
+    <td class="mono">${esc(l.status)}</td>
+    <td class="mono k">${esc(l.endpoint)}</td>
+    <td class="mono k">${l.request_id ? esc(short(l.request_id)) + '…' : '—'}</td>
+    <td class="k">${esc(l.error_message || '')}</td>
+  </tr>`).join('');
+}
+
+async function refreshOrderSelect() {
+  const { data } = await apiJson('hms', 'GET', '/api/hms/lab-requests/');
+  const sel = $('#orderSel');
+  const cur = sel.value;
+  const opts = (Array.isArray(data) ? data : [])
+    .filter(r => ['SENT', 'PENDING', 'COMPLETED'].includes(r.status))
+    .map(r => `<option value="${esc(r.request_id)}">${esc(short(r.request_id))}… ${esc(r.patient_number)} ${esc(r.test_code)} [${esc(r.status)}]</option>`);
+  sel.innerHTML = '<option value="">— select a submitted request —</option>' + opts.join('');
+  if (cur) sel.value = cur;
+}
+
+const refreshAll = () => Promise.all([loadRequests(), loadOrders(), loadLogs(), refreshOrderSelect()]);
+
+// ---------------- actions ----------------
+async function submitRequest(overrides = {}) {
+  const payload = {
+    patient_number: $('#patient').value,
+    test_code: $('#test').value,
+    test_name: $('#test').selectedOptions[0].textContent.split(' — ')[1],
+    ...overrides,
+  };
+  const { status, data } = await apiJson('hms', 'POST', '/api/hms/lab-requests/', payload);
+  if (status === 201) { ctl(`Submitted ✓ request_id=${short(data.request_id)}… order=${data.lis_order_number}`, 'ok'); }
+  else if (status === 200) { ctl(`Duplicate request_id → existing order returned (idempotent)`, 'ok'); }
+  else { ctl(`HTTP ${status}: ${typeof data === 'string' ? data : JSON.stringify(data)}`, 'err'); }
+  await refreshAll();
+  return { status, data };
+}
+
+async function processOrder() {
+  const rid = $('#orderSel').value;
+  if (!rid) { ctl('Select a submitted request first.', 'err'); return { status: 400 }; }
+  const { status: st, data: order } = await apiJson('lab', 'GET', `/api/lis/orders/${rid}/`);
+  if (st !== 200) { ctl(`Order not found on LIS (HTTP ${st})`, 'err'); await refreshAll(); return { status: st }; }
+  if (order.result) { ctl(`Order ${order.order_number} already completed.`, 'err'); await refreshAll(); return { status: 409 }; }
+  const abnormal = order.test_code === 'LIP';
+  const body = abnormal
+    ? { result_value: '9.6', unit: 'mmol/L', reference_range: '3.5-5.5', is_abnormal: true, notes: 'Cholesterol elevated; lifestyle review advised.', performed_by: 'Tech. Neema Kileo', verified_by: 'Dr. Aisha Mwaky' }
+    : { result_value: '4.8', unit: '10^3/uL', reference_range: '4.0-10.0', is_abnormal: false, notes: 'Within normal limits.', performed_by: 'Tech. Neema Kileo', verified_by: 'Dr. Aisha Mwaky' };
+  const { status, data } = await apiJson('lab', 'POST', `/api/lis/orders/${rid}/process/`, body);
+  if (status === 201) { ctl(`Result recorded ✓ ${order.order_number} → COMPLETED`, 'ok'); }
+  else { ctl(`HTTP ${status}: ${JSON.stringify(data)}`, 'err'); }
+  await refreshAll();
+  return { status, data };
+}
+
+async function retrieveResult(rid, verbose = true) {
+  const { status, data } = await apiJson('hms', 'GET', `/api/hms/lab-requests/${rid}/result/`);
+  if (verbose) {
+    if (status === 200) showModal('Lab Result (via HMS → LIS client)', data);
+    else toast(`HTTP ${status}: ${typeof data === 'string' ? data : JSON.stringify(data.detail || data)}`);
+  }
+  return { status, data };
+}
+
+// ---------------- full auto demo ----------------
+const wait = (ms) => new Promise(r => setTimeout(r, ms));
+
+async function runDemo() {
+  const btn = $('#btnAuto'); btn.disabled = true; const orig = btn.textContent;
+  const done = (m) => { btn.textContent = orig; btn.disabled = false; if (m) toast(m, 5000); };
+  try {
+    btn.textContent = '1/8 · validation errors…';
+    await apiJson('hms', 'POST', '/api/hms/lab-requests/', { test_code: 'CBC' });
+    await apiJson('hms', 'POST', '/api/hms/lab-requests/', { patient_number: 'NO-SUCH', test_code: 'CBC', test_name: 'CBC' });
+    await refreshAll(); await wait(900);
+
+    btn.textContent = '2/8 · unauthenticated check…';
+    await fetch('/api/lis/catalog/').catch(() => {});
+    await wait(700);
+
+    btn.textContent = '3/8 · valid submission…';
+    const sub = await submitRequest();
+    if (sub.status !== 201) throw new Error('Submission failed — see message');
+    const rid = sub.data.request_id;
+    await wait(900);
+
+    btn.textContent = '4/8 · result before analysis (expect 409)…';
+    await retrieveResult(rid, false);
+    await refreshAll(); await wait(900);
+
+    btn.textContent = '5/8 · lab staff records result…';
+    $('#orderSel').value = rid;
+    await processOrder();
+    await wait(900);
+
+    btn.textContent = '6/8 · retrieving result…';
+    await retrieveResult(rid, false);
+    await refreshAll(); await wait(900);
+
+    btn.textContent = '7/8 · unknown test code (expect 422)…';
+    await submitRequest({ patient_number: 'HMS-0002', test_code: 'XYZ-999', test_name: 'Non-existent Panel' });
+    await wait(900);
+
+    btn.textContent = '8/8 · idempotent re-submission…';
+    const rid2 = crypto.randomUUID();
+    const p = { request_id: rid2, patient_number: 'HMS-0003', test_code: 'BS', test_name: 'Blood Sugar (Fasting)' };
+    await submitRequest(p);
+    await submitRequest(p);
+    await refreshAll();
+
+    done('✅ Demo complete — see the requests, orders and transaction log below.');
+  } catch (e) {
+    done('❌ ' + e.message);
+  }
+}
+
+// ---------------- wiring ----------------
+$('#btnSubmit').onclick = () => submitRequest().catch(e => ctl(e.message, 'err'));
+$('#btnProcess').onclick = () => processOrder().catch(e => ctl(e.message, 'err'));
+$('#btnReqs').onclick = loadRequests;
+$('#btnOrders').onclick = loadOrders;
+$('#btnLogs').onclick = loadLogs;
+$('#btnAuto').onclick = runDemo;
+refreshAll().catch(() => toast('Cannot reach API — is the server running?'));
+</script>
+</body>
+</html>

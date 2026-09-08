@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: healthms-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-healthms}
+      POSTGRES_USER: ${POSTGRES_USER:-healthms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-healthms}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-healthms} -d ${POSTGRES_DB:-healthms}"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  web:
+    build: .
+    container_name: healthms-web
+    command: gunicorn healthMS.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 60
+    entrypoint: /app/entrypoint.sh
+    environment:
+      DEBUG: "false"
+      SECRET_KEY: ${SECRET_KEY:-django-insecure-change-me-in-production}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      POSTGRES_DB: ${POSTGRES_DB:-healthms}
+      POSTGRES_USER: ${POSTGRES_USER:-healthms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-healthms}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      LIS_API_BASE_URL: http://web:8000
+      LIS_SERVICE_USERNAME: ${LIS_SERVICE_USERNAME:-hms_demo}
+      LIS_SERVICE_PASSWORD: ${LIS_SERVICE_PASSWORD:-HmsDemo#2024}
+      DEMO_LAB_ADMIN_PASSWORD: ${DEMO_LAB_ADMIN_PASSWORD:-LabAdmin#2024}
+      DEMO_HMS_PASSWORD: ${DEMO_HMS_PASSWORD:-HmsDemo#2024}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
