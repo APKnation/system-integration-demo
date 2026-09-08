@@ -120,6 +120,11 @@ export class ApiService {
     return this.get<CatalogEntry[]>('/api/lis/catalog/', 'lab');
   }
 
+  /** Deliberately unauthenticated call used by the demo (expect 401). */
+  anonCatalogCheck(): Observable<unknown> {
+    return this.http.get('/api/lis/catalog/').pipe(catchError((e) => this.handle(e)));
+  }
+
   // --------------------------- integration ---------------------------
 
   getLogs(limit = 60): Observable<IntegrationLogEntry[]> {

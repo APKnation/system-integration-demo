@@ -1,0 +1,205 @@
+<div class="page-title">
+  <h1>Integration Dashboard</h1>
+  <span class="sub">Submit lab requests as HMS, process them as Lab staff, watch every exchange logged.</span>
+</div>
+
+<!-- stats -->
+<div class="grid cols-4" style="margin-bottom:16px">
+  <div class="panel stat blue"><div class="label">Lab requests</div><div class="value">{{ stats().total }}</div></div>
+  <div class="panel stat amber"><div class="label">Sent to LIS</div><div class="value">{{ stats().sent }}</div></div>
+  <div class="panel stat green"><div class="label">Completed</div><div class="value">{{ stats().completed }}</div></div>
+  <div class="panel stat red"><div class="label">Rejected / Error</div><div class="value">{{ stats().rejected }}</div></div>
+</div>
+
+<div class="grid" style="grid-template-columns: 360px 1fr; align-items:start">
+  <!-- controls -->
+  <div class="panel">
+    <div class="head"><h2>Controls</h2></div>
+    <div class="body">
+      <button class="btn-purple btn-block" [disabled]="demoRunning()" (click)="runDemo()">
+        {{ demoRunning() ? '⏳ Demo running…' : '▶ Run Full Demo (auto)' }}
+      </button>
+
+      <label>Patient</label>
+      <select [(ngModel)]="selPatient">
+        @for (p of patients(); track p.id) {
+          <option [value]="p.patient_number">{{ p.patient_number }} — {{ p.full_name }}</option>
+        }
+      </select>
+
+      <label>Test</label>
+      <select [(ngModel)]="selTest">
+        @for (c of catalog(); track c.code) {
+          <option [value]="c.code">{{ c.code }} — {{ c.name }}</option>
+        }
+      </select>
+
+      <button class="btn-primary btn-block" style="margin-top:14px" [disabled]="busy() || demoRunning()" (click)="submit()">
+        📨 Submit Lab Request (HMS → LIS)
+      </button>
+
+      <label>Submitted request (for lab processing)</label>
+      <select [(ngModel)]="selOrder">
+        <option value="">— select a request —</option>
+        @for (r of requests(); track r.request_id) {
+          @if (r.status === 'SENT' || r.status === 'COMPLETED') {
+            <option [value]="r.request_id">{{ r.request_id.slice(0, 8) }}… {{ r.patient_number }} {{ r.test_code }} [{{ r.status }}]</option>
+          }
+        }
+      </select>
+
+      <button class="btn-green btn-block" style="margin-top:6px" [disabled]="busy() || !selOrder" (click)="processSelected()">
+        🧪 Record Result &amp; Complete (Lab staff)
+      </button>
+
+      @if (message(); as m) {
+        <div class="alert {{ m.type }}">{{ m.text }}</div>
+      }
+
+      <p class="k" style="margin-top:14px">
+        The demo runs all 8 verification steps: validation errors, unauthenticated
+        access, valid submission, 409 before analysis, lab processing, result
+        retrieval, 422 unknown test code, and idempotent re-submission.
+      </p>
+    </div>
+  </div>
+
+  <div style="display:flex; flex-direction:column; gap:16px">
+    <!-- demo steps -->
+    <div class="panel">
+      <div class="head">
+        <h2>Demo Progress</h2>
+        @if (demoRunning()) { <span class="badge b-PENDING">running…</span> }
+      </div>
+      <div class="body" style="padding-top:8px">
+        @if (steps().length === 0) {
+          <div class="empty">Click “Run Full Demo” to execute the whole integration flow.</div>
+        } @else {
+          <ul class="steps">
+            @for (s of steps(); track s.n) {
+              <li>
+                <span class="icon">{{ s.icon }}</span>
+                <span><b>Step {{ s.n }}:</b> {{ s.label }}</span>
+                <span class="code k">{{ s.detail }}</span>
+              </li>
+            }
+          </ul>
+        }
+      </div>
+    </div>
+
+    <!-- requests table -->
+    <div class="panel">
+      <div class="head">
+        <h2>📋 HMS Lab Requests</h2>
+        <div class="right"><button class="btn-ghost" (click)="loadRequests()">↻ Refresh</button></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>request_id</th><th>Patient</th><th>Test</th><th>Status</th><th>LIS Order #</th><th>Note</th><th></th></tr></thead>
+          <tbody>
+            @for (r of requests(); track r.request_id) {
+              <tr>
+                <td class="mono" [title]="r.request_id">{{ r.request_id.slice(0, 8) }}…</td>
+                <td>{{ r.patient_number }}<div class="k">{{ r.patient_name }}</div></td>
+                <td>{{ r.test_code }}<div class="k">{{ r.test_name }}</div></td>
+                <td><span class="badge b-{{ r.status }}">{{ r.status }}</span></td>
+                <td class="mono">{{ r.lis_order_number || '—' }}</td>
+                <td class="k">{{ r.rejection_reason || '—' }}</td>
+                <td><button class="btn-ghost btn-sm" (click)="viewResult(r.request_id)">result</button></td>
+              </tr>
+            } @empty {
+              <tr><td colspan="7" class="empty">No lab requests yet — submit one!</td></tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- orders table -->
+    <div class="panel">
+      <div class="head">
+        <h2>🧪 LIS Orders &amp; Results</h2>
+        <div class="right"><button class="btn-ghost" (click)="loadOrders()">↻ Refresh</button></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Order #</th><th>Patient</th><th>Test</th><th>Status</th><th>Result</th><th>Verified by</th></tr></thead>
+          <tbody>
+            @for (o of orders(); track o.order_number) {
+              <tr>
+                <td class="mono">{{ o.order_number }}</td>
+                <td>{{ o.patient_number }}<div class="k">{{ o.patient_name }}</div></td>
+                <td>{{ o.test_code }}</td>
+                <td><span class="badge b-{{ o.status }}">{{ o.status }}</span></td>
+                <td>
+                  @if (o.result; as r) {
+                    <b>{{ r.result_value }} {{ r.unit }}</b>
+                    <div class="k">ref {{ r.reference_range }} @if (r.is_abnormal) {<b style="color:var(--red)"> ⚠ ABNORMAL</b>}</div>
+                  } @else {
+                    <span class="muted">pending</span>
+                  }
+                </td>
+                <td class="k">{{ o.result?.verified_by || '—' }}</td>
+              </tr>
+            } @empty {
+              <tr><td colspan="6" class="empty">No orders yet</td></tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- logs table -->
+    <div class="panel">
+      <div class="head">
+        <h2>🧾 Integration Transaction Log</h2>
+        <div class="right"><button class="btn-ghost" (click)="loadLogs()">↻ Refresh</button></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Time</th><th>Method</th><th>HTTP</th><th>Status</th><th>Endpoint</th><th>request_id</th><th>Error</th></tr></thead>
+          <tbody>
+            @for (l of logs(); track l.transaction_id) {
+              <tr>
+                <td class="k">{{ l.created_at.slice(5, 19).replace('T', ' ') }}</td>
+                <td class="mono">{{ l.method }}</td>
+                <td><span class="badge" [class.b-SENT]="l.status_code < 400" [class.b-REJECTED]="l.status_code >= 400">{{ l.status_code }}</span></td>
+                <td class="mono"><span class="badge b-{{ l.status }}">{{ l.status }}</span></td>
+                <td class="mono k">{{ l.endpoint }}</td>
+                <td class="mono k">{{ l.request_id ? l.request_id.slice(0, 8) + '…' : '—' }}</td>
+                <td class="k">{{ l.error_message }}</td>
+              </tr>
+            } @empty {
+              <tr><td colspan="7" class="empty">No transactions logged yet</td></tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- result modal -->
+@if (resultModal(); as res) {
+  <div class="modal-bg" (click)="closeModal()">
+    <div class="modal panel" (click)="$event.stopPropagation()">
+      <div class="head"><h2>🧾 Lab Result — {{ res.order_number }}</h2></div>
+      <div class="body">
+        <div class="grid cols-2">
+          <div><span class="k">Patient</span><div><b>{{ res.patient_number }}</b></div></div>
+          <div><span class="k">Test</span><div><b>{{ res.test_code }}</b></div></div>
+          <div><span class="k">Value</span><div><b>{{ res.result.result_value }} {{ res.result.unit }}</b>
+            @if (res.result.is_abnormal) {<span class="badge b-REJECTED">ABNORMAL</span>}</div></div>
+          <div><span class="k">Reference</span><div>{{ res.result.reference_range || '—' }}</div></div>
+          <div><span class="k">Performed by</span><div>{{ res.result.performed_by }}</div></div>
+          <div><span class="k">Verified by</span><div>{{ res.result.verified_by || '—' }}</div></div>
+        </div>
+        @if (res.result.notes) { <p class="k" style="margin-top:10px">{{ res.result.notes }}</p> }
+        <pre class="json">{{ res | json }}</pre>
+        @if (resultError()) { <div class="alert err">{{ resultError() }}</div> }
+        <button class="btn-primary" style="margin-top:12px" (click)="closeModal()">Close</button>
+      </div>
+    </div>
+  </div>
+}
