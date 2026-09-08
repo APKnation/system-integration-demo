@@ -41,7 +41,7 @@ interface DemoStep {
 
 @Component({
   selector: 'app-dashboard',
-  imports: [],
+  imports: [FormsModule],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.css',
 })

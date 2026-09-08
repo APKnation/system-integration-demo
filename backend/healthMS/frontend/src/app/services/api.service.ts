@@ -71,6 +71,16 @@ export class ApiService {
     return this.get<Patient[]>('/api/hms/patients/', 'hms');
   }
 
+  createPatient(payload: {
+    patient_number: string;
+    first_name: string;
+    last_name: string;
+    date_of_birth: string;
+    gender: string;
+  }): Observable<Patient> {
+    return this.post<Patient>('/api/hms/patients/', payload, 'hms');
+  }
+
   listLabRequests(): Observable<LabRequest[]> {
     return this.get<LabRequest[]>('/api/hms/lab-requests/', 'hms');
   }

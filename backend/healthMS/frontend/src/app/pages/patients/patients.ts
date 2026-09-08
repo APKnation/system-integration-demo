@@ -1,11 +1,12 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { ApiService, ApiError } from '../../services/api.service';
 import { Patient } from '../../models';
 
 @Component({
   selector: 'app-patients',
-  imports: [],
+  imports: [FormsModule],
   templateUrl: './patients.html',
   styleUrl: './patients.css',
 })
