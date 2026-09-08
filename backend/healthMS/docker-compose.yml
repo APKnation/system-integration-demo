@@ -42,7 +42,7 @@ services:
         condition: service_healthy
 
   frontend:
-    build: ./frontend
+    build: ../../frontend
     container_name: healthms-frontend
     ports:
       - "80:80"

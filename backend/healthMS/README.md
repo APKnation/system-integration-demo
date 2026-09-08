@@ -2,7 +2,12 @@
 
 An API-based integration between a **Hospital Management System (HMS)** and a
 **Laboratory Information System (LIS)**, built with Django + Django REST
-Framework on **PostgreSQL** — everything runs in **Docker**.
+Framework on **PostgreSQL**, with an **Angular** dashboard frontend —
+everything runs in **Docker**.
+
+> Workspace layout: the Angular frontend lives in `../../frontend`
+> (workspace root, outside the backend folder); the Django backends live in
+> `backend/healthMS` (this project) and `backend/laboratoryIS`.
 
 The HMS submits a laboratory test request to the LIS over HTTP and later
 retrieves the patient's laboratory results. The project demonstrates:
@@ -58,25 +63,41 @@ Requires Docker + Docker Compose only.
 docker compose up --build
 ```
 
-That's it. The `web` container waits for PostgreSQL, runs migrations, seeds the
-catalog/users/patients, then serves the app and dashboard at:
+That's it. The stack starts three containers:
 
-> **http://localhost:8000/** — open the dashboard in your browser
+| Container | Purpose | URL |
+|---|---|---|
+| `healthms-frontend` | **Angular dashboard + nginx** (proxies `/api` to Django) | **http://localhost/** |
+| `healthms-web` | Django API (gunicorn), auto-migrates + seeds | http://localhost:8000 |
+| `healthms-db` | PostgreSQL 16 | localhost:5432 |
 
-- Admin: http://localhost:8000/admin/ (login `lab_admin` / `LabAdmin#2024`)
+> **Open the dashboard at http://localhost/** — the Angular app proxies API
+> calls to Django, so there is no CORS setup.
+
+- Admin: http://localhost/admin/ (login `lab_admin` / `LabAdmin#2024`)
 - Demo accounts: `lab_admin` / `LabAdmin#2024` and `hms_demo` / `HmsDemo#2024`
 - Demo patients: `HMS-0001` Amina Juma, `HMS-0002` Baraka Mushi, `HMS-0003` Neema Kileo
+
+### Angular development mode
+
+```bash
+# From the frontend project (workspace root):
+cd ../../frontend
+npm install
+npm start          # ng serve on http://localhost:4200, proxying /api → :8000
+```
 
 ### Run the demonstration
 
 **Option A — in the browser (recommended for the demo):**
 
-1. Open http://localhost:8000/
-2. Click **▶ Run Full Demo (auto)** — it walks through validation errors,
+1. Open http://localhost/
+2. Log in (credentials pre-filled — you can log in to both HMS and Lab sides).
+3. Click **▶ Run Full Demo (auto)** on the Dashboard — it walks through validation errors,
    auth check, submission, 409 result-not-ready, lab processing, result
    retrieval, 422 unknown test code, and idempotent re-submission.
-3. Watch the HMS requests, LIS orders/results, and the integration transaction
-   log update live. Or drive each step manually with the buttons.
+4. Watch the HMS requests, LIS orders/results, and the integration transaction
+   log update live. Or drive each step manually from the other pages.
 
 **Option B — CLI script:**
 
