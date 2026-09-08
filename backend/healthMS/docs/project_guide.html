@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>HMS ↔ LIS Integration — Project Guide</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; color: #1e293b; font-size: 10.5pt; line-height: 1.55; margin: 0; }
+  h1 { font-size: 22pt; margin: 0 0 4px; color: #0f172a; }
+  h2 { font-size: 14pt; color: #1d4ed8; border-bottom: 2px solid #dbeafe; padding-bottom: 4px; margin: 26px 0 10px; }
+  h3 { font-size: 11.5pt; margin: 16px 0 6px; color: #0f172a; }
+  p { margin: 6px 0; }
+  .subtitle { color: #64748b; font-size: 11pt; margin-bottom: 2px; }
+  .meta { color: #94a3b8; font-size: 9pt; }
+  .cover { border-bottom: 4px solid #1d4ed8; padding-bottom: 14px; margin-bottom: 18px; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 12px; font-size: 9.5pt; }
+  th { background: #eff6ff; color: #1e40af; text-align: left; padding: 7px 9px; border: 1px solid #dbeafe; }
+  td { padding: 6px 9px; border: 1px solid #e2e8f0; vertical-align: top; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  code, pre { font-family: 'Cascadia Code', Consolas, 'Courier New', monospace; }
+  code { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 4px; padding: 1px 5px; font-size: 9pt; }
+  pre { background: #0f172a; color: #e2e8f0; border-radius: 8px; padding: 12px 14px; font-size: 8.8pt; line-height: 1.5; overflow-x: auto; white-space: pre-wrap; }
+  pre b { color: #7dd3fc; font-weight: 600; }
+  .box { border-radius: 8px; padding: 10px 14px; margin: 10px 0; font-size: 9.5pt; }
+  .info { background: #eff6ff; border-left: 4px solid #3b82f6; }
+  .warn { background: #fffbeb; border-left: 4px solid #f59e0b; }
+  .ok { background: #f0fdf4; border-left: 4px solid #22c55e; }
+  ul, ol { margin: 6px 0 10px; padding-left: 22px; }
+  li { margin: 3px 0; }
+  .two-col { display: flex; gap: 14px; }
+  .two-col > div { flex: 1; }
+  .badge { display: inline-block; background: #dbeafe; color: #1d4ed8; border-radius: 99px; padding: 1px 10px; font-size: 8.5pt; font-weight: 600; }
+  .stepnum { display: inline-block; background: #1d4ed8; color: #fff; border-radius: 50%; width: 20px; height: 20px; text-align: center; line-height: 20px; font-size: 9pt; font-weight: 700; margin-right: 6px; }
+  .pagebreak { page-break-before: always; }
+  .center { text-align: center; }
+  small { color: #64748b; }
+</style>
+</head>
+<body>
+
+<!-- ============ COVER ============ -->
+<div class="cover">
+  <div class="subtitle">Group 2 — Systems Integration Project</div>
+  <h1>HMS ↔ LIS Integration</h1>
+  <p class="subtitle">Hospital Management System ⇄ Laboratory Information System — API-Based Integration</p>
+  <p class="meta">Django 6 · Django REST Framework · JWT Authentication · PostgreSQL 16 (Docker) · Web Dashboard</p>
+</div>
+
+<h2>1. What This Project Does</h2>
+<p>
+This project demonstrates a complete, real-world integration between a
+<b>Hospital Management System (HMS)</b> and a <b>Laboratory Information System (LIS)</b>.
+The HMS submits a laboratory test request over HTTP; the LIS validates, accepts, and processes
+it; the HMS then retrieves the patient's laboratory result. Both systems run as separate
+Django apps that communicate <b>only through a public REST API authenticated with JWT</b> —
+exactly as two independent hospital systems would.
+</p>
+
+<table>
+  <tr><th>Requirement</th><th>How it is fulfilled</th></tr>
+  <tr><td><b>Request validation</b></td><td>Missing fields, unknown patient, bad UUID, future date-of-birth, blank values → HTTP 400. Unknown/inactive test code → HTTP 422.</td></tr>
+  <tr><td><b>Authentication</b></td><td>JWT via <code>/api/auth/token/</code> (SimpleJWT). Every API call requires <code>Authorization: Bearer &lt;token&gt;</code>. No token → HTTP 401.</td></tr>
+  <tr><td><b>Authorization</b></td><td>Separate service accounts: <code>hms_demo</code> (submits requests / retrieves results) and <code>lab_admin</code> (lab staff — records results, admin panel).</td></tr>
+  <tr><td><b>Response handling</b></td><td>The HMS-side client (<code>integration/lis_client.py</code>) maps every LIS response (200/201/400/401/404/409/422/5xx) into HMS request status transitions: <span class="badge">PENDING → SENT</span> <span class="badge">REJECTED</span> <span class="badge">ERROR</span> <span class="badge">COMPLETED</span></td></tr>
+  <tr><td><b>Error handling</b></td><td>Connection failures, auth failures (with one automatic token-refresh retry), validation rejections, DB failures wrapped in <code>transaction.atomic()</code>, idempotent duplicate handling — always with a clean JSON error body, never a stack trace.</td></tr>
+  <tr><td><b>Transaction logging</b></td><td>Every inbound and outbound exchange is persisted in the <code>integration_integrationlog</code> PostgreSQL table — including errors — visible in the dashboard, admin, API, or CLI.</td></tr>
+</table>
+
+<h2>2. Architecture</h2>
+<pre>
++-------------+   HTTP/JSON + JWT     +-------------+
+|    HMS      | ---------------------&gt; |     LIS     |
+| (hms app)   |  POST /api/lis/orders/ | (lis app)   |
+|             | &lt;---------------------- |             |
++-------------+   order # / results   +-------------+
+       |                                     |
+       +----- integration.IntegrationLog ----+
+              (full audit trail, PostgreSQL)
+
+Docker Compose stack:
+  [ db ]  PostgreSQL 16  (volume: pgdata)
+  [ web ] Django + gunicorn + dashboard  (port 8000)
+</pre>
+
+<h2>3. Requirements to Run</h2>
+<table>
+  <tr><th>Requirement</th><th>Check</th><th>Notes</th></tr>
+  <tr><td>Docker + Docker Compose</td><td><code>docker compose version</code></td><td>The only hard requirement — everything else runs in containers.</td></tr>
+  <tr><td>Free ports</td><td>—</td><td>Port <b>8000</b> (web app) and <b>5432</b> (Postgres) must be free. Stop conflicting containers (e.g. other DBs) if needed.</td></tr>
+  <tr><td>(Optional) Python 3.12+ on host</td><td><code>python --version</code></td><td>Only needed to run the CLI demo script or tests from the host machine.</td></tr>
+</table>
+
+<div class="warn"><b>Before you start:</b> if another application (for example a Nextcloud
+stack or a local PostgreSQL service) already occupies port 5432 or 8000, stop it first, or change
+the port mapping in <code>docker-compose.yml</code> (e.g. <code>"5433:5432"</code> and
+<code>"8001:8000"</code>) — if you change 8000, also update <code>LIS_API_BASE_URL</code> and the
+dashboard URLs accordingly.</div>
+
+<!-- ============ PAGE 2 ============ -->
+<div class="pagebreak"></div>
+<h2>4. Running the Project (Docker — Recommended)</h2>
+<pre>
+# 1. From the project root (the folder containing docker-compose.yml):
+<b>docker compose up --build</b>
+
+#    The web container automatically:
+#      - waits for PostgreSQL to become healthy
+#      - applies all migrations
+#      - seeds the lab test catalog, service accounts and demo patients
+#      - starts gunicorn on 0.0.0.0:8000
+
+# 2. Open the dashboard in your browser:
+<b>http://localhost:8000/</b>
+
+# 3. To stop:
+docker compose down          # keeps data
+docker compose down -v       # also deletes the database volume
+</pre>
+
+<h3>Useful commands</h3>
+<pre>
+docker compose ps                              # container status
+docker compose logs -f web                     # live application logs
+docker compose restart web                     # restart the app
+docker compose exec web python manage.py transaction_log -n 30   # view audit trail
+docker compose exec web python manage.py test integration        # run the test suite
+docker compose exec web python manage.py createsuperuser         # extra admin user
+</pre>
+
+<h2>5. Running the Demonstration</h2>
+
+<h3><span class="stepnum">A</span>Browser dashboard (recommended for presentations)</h3>
+<ol>
+  <li>Open <b>http://localhost:8000/</b></li>
+  <li>Click <b>▶ Run Full Demo (auto)</b> — it walks through all 8 steps with a small pause between each, while the three tables below update live.</li>
+  <li>What you will see, in order:
+    <ul>
+      <li><b>Validation errors</b> — missing fields and unknown patient → HTTP 400</li>
+      <li><b>Unauthenticated call</b> rejected → HTTP 401</li>
+      <li><b>Valid submission</b> — HMS creates the request, LIS accepts it and returns an order number (e.g. <code>LIS-20260908-F1091823</code>) → HTTP 201</li>
+      <li><b>Result before analysis</b> → HTTP 409 “Result not available yet”</li>
+      <li><b>Lab staff records the result</b> — order becomes COMPLETED → HTTP 201</li>
+      <li><b>HMS retrieves the result</b> — full result payload → HTTP 200</li>
+      <li><b>Unknown test code</b> — LIS rejects, HMS marks request REJECTED → HTTP 422</li>
+      <li><b>Idempotent re-submission</b> — the same <code>request_id</code> returns the same order, no duplicate → HTTP 200</li>
+    </ul>
+  </li>
+  <li>The <b>Integration Transaction Log</b> table at the bottom shows every request/response exchange (including the failures — that is intentional: it proves logging works).</li>
+  <li>You can also drive each step manually: pick a patient + test → <b>Submit</b>, then select the request → <b>Record Result</b>, and use the <b>result</b> buttons in the LIS table.</li>
+</ol>
+
+<h3><span class="stepnum">B</span>CLI script</h3>
+<pre>
+# From the host (server must be running):
+python simulate_integration.py
+
+# Or from inside the container:
+docker compose exec -e BASE_URL=http://web:8000 web python simulate_integration.py
+</pre>
+
+<!-- ============ PAGE 3 ============ -->
+<div class="pagebreak"></div>
+<h2>6. API Reference</h2>
+<table>
+  <tr><th>Method</th><th>Endpoint</th><th>Auth</th><th>Purpose</th></tr>
+  <tr><td>GET</td><td><code>/</code></td><td>—</td><td>Dashboard frontend (demo UI)</td></tr>
+  <tr><td>POST</td><td><code>/api/auth/token/</code></td><td>—</td><td>Obtain JWT (<code>username</code>, <code>password</code>) → <code>access</code>, <code>refresh</code></td></tr>
+  <tr><td>POST</td><td><code>/api/auth/token/refresh/</code></td><td>refresh token</td><td>Refresh JWT</td></tr>
+  <tr><td>GET / POST</td><td><code>/api/hms/patients/</code></td><td>JWT</td><td>List / create patients (HMS)</td></tr>
+  <tr><td>GET / POST</td><td><code>/api/hms/lab-requests/</code></td><td>JWT</td><td>List / submit lab test requests (HMS → LIS). Optional <code>request_id</code> for idempotency.</td></tr>
+  <tr><td>GET</td><td><code>/api/hms/lab-requests/&lt;request_id&gt;/result/</code></td><td>JWT</td><td>HMS retrieves the result via the LIS client (409 until ready)</td></tr>
+  <tr><td>GET / POST</td><td><code>/api/lis/orders/</code></td><td>JWT</td><td>List orders / ingest an order (idempotent on <code>request_id</code>)</td></tr>
+  <tr><td>GET</td><td><code>/api/lis/orders/&lt;request_id&gt;/</code></td><td>JWT</td><td>Order status (includes result once complete)</td></tr>
+  <tr><td>POST</td><td><code>/api/lis/orders/&lt;request_id&gt;/process/</code></td><td>JWT</td><td>Lab staff record the result; order → COMPLETED</td></tr>
+  <tr><td>GET</td><td><code>/api/lis/orders/&lt;request_id&gt;/result/</code></td><td>JWT</td><td>LIS-side result retrieval (409 until ready, 404 unknown)</td></tr>
+  <tr><td>GET</td><td><code>/api/lis/catalog/</code></td><td>JWT</td><td>Active lab test catalog</td></tr>
+  <tr><td>GET</td><td><code>/api/logs/?limit=50</code></td><td>JWT</td><td>Integration transaction log (JSON)</td></tr>
+  <tr><td>GET</td><td><code>/admin/</code></td><td>staff login</td><td>Django admin (browse all data + logs)</td></tr>
+</table>
+
+<h3>Example: end-to-end with curl</h3>
+<pre>
+# 1. Get a token (HMS service account)
+<b>TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/token/ \
+  -H "Content-Type: application/json" \
+  -d '{"username":"hms_demo","password":"HmsDemo#2024"}' | jq -r .access)</b>
+
+# 2. Submit a lab request (HMS → LIS)
+curl -s -X POST http://localhost:8000/api/hms/lab-requests/ \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"patient_number":"HMS-0001","test_code":"CBC","test_name":"Complete Blood Count"}'
+# → 201 {"detail":"...","request_id":"...","status":"SENT","lis_order_number":"LIS-..."}
+
+# 3. Retrieve the result (409 until lab staff process it, 200 afterwards)
+curl -s http://localhost:8000/api/hms/lab-requests/&lt;request_id&gt;/result/ \
+  -H "Authorization: Bearer $TOKEN"
+</pre>
+
+<h2>7. Test Accounts &amp; Seed Data</h2>
+<table>
+  <tr><th>Username</th><th>Password</th><th>Role</th></tr>
+  <tr><td><code>lab_admin</code></td><td><code>LabAdmin#2024</code></td><td>Lab staff — records results, Django admin</td></tr>
+  <tr><td><code>hms_demo</code></td><td><code>HmsDemo#2024</code></td><td>HMS service account (used by the integration client)</td></tr>
+</table>
+<p>
+<b>Seed patients:</b> <code>HMS-0001</code> Amina Juma (F, 1990) · <code>HMS-0002</code> Baraka Mushi (M, 1985) · <code>HMS-0003</code> Neema Kileo (F, 2001)<br>
+<b>Seed catalog:</b> CBC, LFT, RFT, BS, LIP, URM
+</p>
+
+<h2>8. Running the Tests</h2>
+<pre>
+docker compose exec web python manage.py test integration
+</pre>
+<div class="ok"><b>Expected result:</b> <i>Ran 14 tests … OK</i> — covers authentication (401 / token
+issuance), validation (missing fields, unknown patient, bad UUID), order ingestion, unknown test
+code (422), future DOB (400), idempotency, result lifecycle (409 → 200), unknown request (404),
+and transaction logging.</div>
+
+<h2>9. Troubleshooting &amp; Fixed Issues</h2>
+<table>
+  <tr><th>Issue</th><th>Cause</th><th>Solution / What was fixed</th></tr>
+  <tr><td><code>web</code> container fails: <code>entrypoint.sh: no such file</code></td><td>Entrypoint missing from the image</td><td>Fixed in <code>Dockerfile</code> (<code>COPY entrypoint.sh</code> + <code>chmod +x</code>). Rebuild: <code>docker compose up --build</code>.</td></tr>
+  <tr><td>“LIS authentication failed” / HTTP 400 on submission inside Docker</td><td>Container-to-container calls use hostname <code>web</code>, which was not in <code>ALLOWED_HOSTS</code> (also, the project <code>.env</code> overrides compose defaults)</td><td><code>ALLOWED_HOSTS</code> now includes <code>web</code> in <b>both</b> <code>.env</code>/<code>.env.example</code> and <code>docker-compose.yml</code>. After changing env vars run: <code>docker compose up -d --force-recreate web</code>.</td></tr>
+  <tr><td>Duplicate submission raised HTTP 500 (IntegrityError)</td><td>Re-submitting the same <code>request_id</code> violated the unique constraint</td><td>HMS view now treats a repeated <code>request_id</code> idempotently (returns the existing order, HTTP 200); the client never downgrades a COMPLETED request.</td></tr>
+  <tr><td>Port already allocated (5432 / 8000)</td><td>Another stack (e.g. Nextcloud/MariaDB, local Postgres) uses the port</td><td>Stop the other container, or change the port mapping in <code>docker-compose.yml</code>.</td></tr>
+  <tr><td><code>Database "healthms" does not exist</code> on first run</td><td>Postgres volume not initialised yet</td><td>Not an issue with compose — the <code>db</code> service creates it automatically from <code>POSTGRES_DB</code>. Just wait for the healthcheck.</td></tr>
+  <tr><td>Want a clean re-demo</td><td>Data persists in the <code>pgdata</code> volume</td><td><code>docker compose exec web python manage.py flush --noinput &amp;&amp; docker compose restart web</code> (entrypoint re-seeds), or <code>docker compose down -v</code> for a full reset.</td></tr>
+  <tr><td>Dashboard shows “Cannot reach API”</td><td>Web container still starting / crashed</td><td><code>docker compose logs -f web</code> — wait for <i>“Booting worker”</i>, then reload the page.</td></tr>
+</table>
+
+<h2>10. Project Structure</h2>
+<pre>
+├── docker-compose.yml         # db + web services
+├── Dockerfile / entrypoint.sh # app image, auto-migrate + seed
+├── requirements.txt           # Django, DRF, SimpleJWT, psycopg2, gunicorn, whitenoise
+├── .env / .env.example        # all configuration (DB, LIS URL, service credentials)
+├── manage.py
+├── healthMS/                  # project settings & root URL config
+├── hms/                       # HOSPITAL system: Patient, LabRequest, submission & result views
+│   └── management/commands/seed_demo_data.py
+├── lis/                       # LAB system: catalog, order ingest (idempotent), process, results
+├── integration/               # LISClient (JWT, retries), IntegrationLog, log API, tests
+├── templates/dashboard.html   # the web dashboard
+├── simulate_integration.py    # CLI end-to-end demo
+└── docs/project_guide.html    # this guide (source of the PDF)
+</pre>
+
+<div class="center" style="margin-top:26px">
+  <small>Generated September 2026 · All endpoints verified by automated tests and the live demonstration</small>
+</div>
+
+</body>
+</html>
