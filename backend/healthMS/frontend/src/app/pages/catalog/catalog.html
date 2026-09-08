@@ -1,0 +1,32 @@
+<div class="page-title">
+  <h1>Lab Test Catalog</h1>
+  <span class="sub">Tests the LIS can perform — used to validate incoming orders</span>
+</div>
+
+<div class="panel" style="max-width:760px">
+  <div class="head">
+    <h2>Active tests</h2>
+    <div class="right"><button class="btn-ghost" (click)="load()">↻ Refresh</button></div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Code</th><th>Name</th><th>Description</th><th>Status</th></tr></thead>
+      <tbody>
+        @for (c of entries(); track c.code) {
+          <tr>
+            <td><span class="badge b-SENT">{{ c.code }}</span></td>
+            <td><b>{{ c.name }}</b></td>
+            <td class="k">{{ c.description || '—' }}</td>
+            <td>@if (c.is_active) {<span class="badge b-COMPLETED">active</span>} @else {<span class="badge b-PENDING">inactive</span>}</td>
+          </tr>
+        } @empty {
+          <tr><td colspan="4" class="empty">Catalog empty — run the seed command</td></tr>
+        }
+      </tbody>
+    </table>
+  </div>
+</div>
+
+@if (error(); as e) {
+  <div class="alert err" style="max-width:760px">{{ e }}</div>
+}

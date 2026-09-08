@@ -1,0 +1,54 @@
+<div class="page-title">
+  <h1>Integration Transaction Log</h1>
+  <span class="sub">Every inbound and outbound exchange, persisted in PostgreSQL</span>
+</div>
+
+<div class="panel">
+  <div class="head">
+    <h2>Entries</h2>
+    <div class="right row-inline" style="flex:0">
+      <select [(ngModel)]="limit" style="width:110px" (change)="load()">
+        <option [value]="25">Last 25</option>
+        <option [value]="50">Last 50</option>
+        <option [value]="100">Last 100</option>
+        <option [value]="200">Last 200</option>
+      </select>
+      <button class="btn-ghost" (click)="load()">↻ Refresh</button>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Time</th><th>Side</th><th>Method</th><th>HTTP</th><th>Status</th><th>Endpoint</th><th>request_id</th><th>Error</th></tr></thead>
+      <tbody>
+        @for (l of logs(); track l.transaction_id) {
+          <tr>
+            <td class="k">{{ l.created_at.slice(5, 19).replace('T', ' ') }}</td>
+            <td>
+              @switch (sideOf(l)) {
+                @case ('int') { <span class="badge b-COMPLETED">integration</span> }
+                @case ('lis') { <span class="badge b-SENT">LIS</span> }
+                @default { <span class="badge b-ORDER_SUBMITTED">HMS</span> }
+              }
+            </td>
+            <td class="mono">{{ l.method }}</td>
+            <td>
+              <span class="badge" [class.b-SENT]="l.status_code < 400" [class.b-REJECTED]="l.status_code >= 400">
+                {{ l.status_code }}
+              </span>
+            </td>
+            <td class="mono"><span class="badge b-{{ l.status }}">{{ l.status }}</span></td>
+            <td class="mono k">{{ l.endpoint }}</td>
+            <td class="mono k">{{ l.request_id ? l.request_id.slice(0, 8) + '…' : '—' }}</td>
+            <td class="k">{{ l.error_message }}</td>
+          </tr>
+        } @empty {
+          <tr><td colspan="8" class="empty">No transactions logged yet</td></tr>
+        }
+      </tbody>
+    </table>
+  </div>
+</div>
+
+@if (error(); as e) {
+  <div class="alert err">{{ e }}</div>
+}
