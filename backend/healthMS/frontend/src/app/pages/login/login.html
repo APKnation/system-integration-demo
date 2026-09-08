@@ -1,0 +1,43 @@
+<div class="login-wrap">
+  <div class="panel login-card">
+    <div class="head"><h2>Sign in</h2></div>
+    <div class="body">
+      <div class="side-tabs">
+        <button
+          type="button"
+          [class.sel-hms]="side === 'hms'"
+          [class.sel-lab]="side === 'lab'"
+          (click)="switchSide('hms')"
+        >
+          🏥 HMS side
+        </button>
+        <button
+          type="button"
+          [class.sel-hms]="side === 'lab'"
+          [class.sel-lab]="side === 'lab'"
+          (click)="switchSide('lab')"
+        >
+          🧪 Lab side
+        </button>
+      </div>
+
+      <label>Username</label>
+      <input [(ngModel)]="username" autocomplete="username" />
+      <label>Password</label>
+      <input type="password" [(ngModel)]="password" autocomplete="current-password" />
+
+      @if (error()) {
+        <div class="alert err">{{ error() }}</div>
+      }
+
+      <button class="btn-primary btn-block" style="margin-top:14px" [disabled]="busy()" (click)="submit()">
+        {{ busy() ? 'Signing in…' : 'Sign in' }}
+      </button>
+
+      <p class="k" style="margin-top:12px">
+        Demo credentials are pre-filled. HMS submits lab requests; the Lab side
+        processes orders. You can log in to both.
+      </p>
+    </div>
+  </div>
+</div>
