@@ -47,11 +47,10 @@ class LabRequestListCreateView(APIView):
         return Response(serializer.data)
 
     def post(self, request):
+        local_only = str(request.query_params.get('local', '')).lower() == 'true'
         serializer = LabRequestCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        # Idempotency: a repeated request_id re-uses the stored request
-        # instead of raising a uniqueness error (retry-safe submission).
         request_id = serializer.validated_data.get("request_id")
         lab_request = (
             LabRequest.objects.filter(request_id=request_id).first()
@@ -61,13 +60,11 @@ class LabRequestListCreateView(APIView):
         created = False
         if lab_request is None:
             try:
-                lab_request = serializer.save()  # status=PENDING
+                lab_request = serializer.save()
                 created = True
             except IntegrityError:
                 lab_request = LabRequest.objects.get(request_id=request_id)
         else:
-            # Retry semantics: refresh the payload fields, keep the same
-            # request_id as the correlation key.
             patient = Patient.objects.get(
                 patient_number=serializer.validated_data["patient_number"]
             )
@@ -78,12 +75,20 @@ class LabRequestListCreateView(APIView):
                 "patient", "test_code", "test_name", "updated_at"
             ])
 
+        if local_only:
+            return Response(
+                {
+                    "detail": "Lab request saved locally (not pushed to LIS).",
+                    "request_id": str(lab_request.request_id),
+                    "status": lab_request.status,
+                },
+                status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+            )
+
         client = LISClient(user=request.user)
         response_data, error = client.submit_lab_request(lab_request)
 
         if error is not None:
-            # submit_lab_request already updated the LabRequest status
-            # (REJECTED/ERROR) and wrote a transaction log entry.
             return Response(
                 {
                     "detail": error["detail"],
@@ -148,4 +153,59 @@ class LabRequestResultView(APIView):
                 "lis_order_number": lab_request.lis_order_number,
                 **data,
             }
+        )
+
+
+class LabRequestPushView(APIView):
+    """POST /api/hms/lab-requests/<request_id>/push/
+
+    Explicitly push a pending/errored HMS lab request to the LIS.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, request_id: uuid.UUID):
+        lab_request = LabRequest.objects.filter(request_id=request_id).first()
+        if lab_request is None:
+            return Response(
+                {"detail": "Lab request not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if lab_request.status in ('SENT', 'COMPLETED'):
+            return Response(
+                {
+                    "detail": f"Request is already {lab_request.status}. No need to push again.",
+                    "request_id": str(lab_request.request_id),
+                    "status": lab_request.status,
+                    "lis_order_number": lab_request.lis_order_number,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        client = LISClient(user=request.user)
+        response_data, error = client.submit_lab_request(lab_request)
+
+        if error is not None:
+            return Response(
+                {
+                    "detail": error["detail"],
+                    "request_id": str(lab_request.request_id),
+                    "status": lab_request.status,
+                    "lis_order_number": lab_request.lis_order_number,
+                    "rejection_reason": lab_request.rejection_reason,
+                    "upstream_status_code": error.get("status_code"),
+                },
+                status=error["status_code"],
+            )
+
+        lab_request.refresh_from_db()
+        return Response(
+            {
+                "detail": "Lab request pushed to LIS successfully.",
+                "request_id": str(lab_request.request_id),
+                "status": lab_request.status,
+                "lis_order_number": lab_request.lis_order_number,
+            },
+            status=status.HTTP_200_OK,
         )

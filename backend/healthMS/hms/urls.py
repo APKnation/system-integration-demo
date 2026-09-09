@@ -14,4 +14,9 @@ urlpatterns = [
         views.LabRequestResultView.as_view(),
         name="hms-lab-request-result",
     ),
+    path(
+        "lab-requests/<uuid:request_id>/push/",
+        views.LabRequestPushView.as_view(),
+        name="hms-lab-request-push",
+    ),
 ]
