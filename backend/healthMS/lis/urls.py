@@ -24,6 +24,11 @@ urlpatterns = [
         name="lis-order-process",
     ),
     path(
+        "orders/<uuid:request_id>/status/",
+        views.LabOrderStatusUpdateView.as_view(),
+        name="lis-order-status-update",
+    ),
+    path(
         "catalog/",
         views.LabTestCatalogView.as_view(),
         name="lis-catalog",

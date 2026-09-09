@@ -51,6 +51,10 @@ class LabResultSerializer(serializers.ModelSerializer):
         ]
 
 
+class LabOrderStatusUpdateSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=LabOrder.Status.choices)
+
+
 class LabOrderIngestSerializer(serializers.Serializer):
     """Validates the payload the HMS sends when submitting a lab request."""
 

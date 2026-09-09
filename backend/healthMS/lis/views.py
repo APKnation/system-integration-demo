@@ -233,6 +233,70 @@ class LabResultView(APIView):
         )
 
 
+class LabOrderStatusUpdateView(APIView):
+    """PATCH /api/lis/orders/<request_id>/status/ - update order status."""
+
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, request_id: uuid.UUID):
+        order = LabOrder.objects.filter(hms_request_id=request_id).first()
+        if order is None:
+            return Response(
+                {"detail": "No lab order found for this request_id."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = LabOrderStatusUpdateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        new_status = serializer.validated_data["status"]
+        old_status = order.status
+
+        # Only allow forward transitions
+        allowed = {
+            "ACCEPTED": ["IN_PROGRESS"],
+            "IN_PROGRESS": ["COMPLETED"],
+        }
+        if new_status not in allowed.get(old_status, []):
+            return Response(
+                {
+                    "detail": (
+                        f"Cannot transition from {old_status} to {new_status}. "
+                        f"Allowed: {allowed.get(old_status, [])}"
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # If completing, ensure result exists
+        if new_status == "COMPLETED" and not hasattr(order, "result"):
+            return Response(
+                {"detail": "Cannot complete order without a recorded result."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        order.status = new_status
+        order.save(update_fields=["status", "updated_at"])
+
+        log_transaction(
+            endpoint=request.path,
+            method="PATCH",
+            status_code=status.HTTP_200_OK,
+            status="ORDER_STATUS_UPDATED",
+            request_id=request_id,
+            error_message=f"{old_status} -> {new_status}",
+        )
+
+        return Response(
+            {
+                "order_number": order.order_number,
+                "status": order.status,
+                "previous_status": old_status,
+            }
+        )
+
+
 class LabOrderProcessView(APIView):
     """POST /api/lis/orders/<request_id>/process/
 

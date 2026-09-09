@@ -143,8 +143,6 @@ if not DEBUG:
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-        'rest_framework.authentication.SessionAuthentication',
-        'rest_framework.authentication.BasicAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
@@ -157,3 +155,9 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
+
+# LIS integration settings
+LIS_API_BASE_URL = os.getenv('LIS_API_BASE_URL', 'http://127.0.0.1:8000')
+LIS_SERVICE_USERNAME = os.getenv('LIS_SERVICE_USERNAME', 'hms_demo')
+LIS_SERVICE_PASSWORD = os.getenv('LIS_SERVICE_PASSWORD', 'HmsDemo#2024')
+LIS_TIMEOUT_SECONDS = int(os.getenv('LIS_TIMEOUT_SECONDS', '5'))
