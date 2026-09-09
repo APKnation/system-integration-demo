@@ -7,7 +7,7 @@ class Patient(models.Model):
     GENDER_CHOICES = [
         ("M", "Male"),
         ("F", "Female"),
-        ("O", "Other"),
+       
     ]
 
     patient_number = models.CharField(max_length=50, unique=True)
