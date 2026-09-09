@@ -23,6 +23,7 @@ urlpatterns = [
     path('api/hms/', include('hms.urls')),
     path('api/hms/', include('hms.urls_auth')),
     path('api/lis/', include('lis.urls')),
+    path('api/', include('integration.urls')),
 ]
 
 if settings.DEBUG:
